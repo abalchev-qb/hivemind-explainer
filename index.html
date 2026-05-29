@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How Hivemind Works — an interactive explainer</title>
+<meta name="description" content="An interactive, click-through explanation of Hivemind: how it walks a code graph, extracts the hidden WHY behind commits, and serves it back at retrieval time." />
+<style>
+  :root{
+    --bg:#0b0e14; --bg2:#11151f; --panel:#161b27; --panel2:#1c2230;
+    --ink:#e6e9f0; --muted:#8b93a7; --faint:#5b6478;
+    --line:#27304200; --border:#252d3d;
+    --accent:#6ea8fe; --accent2:#7ee0c0; --warn:#ffb454; --bad:#ff7a85;
+    --learn:#7ee0c0; --skip:#5b6478; --back:#ffb454;
+    --t1:#6ea8fe; --t2:#7ee0c0; --t3:#c08cff;
+    --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono","Menlo",Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:radial-gradient(1200px 800px at 70% -10%,#16203a 0%,var(--bg) 55%);
+    color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .stage{position:fixed;inset:0;display:flex;flex-direction:column}
+  header.bar{
+    display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,rgba(20,26,38,.7),rgba(20,26,38,0));backdrop-filter:blur(6px);
+    z-index:30;
+  }
+  .logo{display:flex;align-items:center;gap:10px;font-weight:680;letter-spacing:.2px}
+  .logo .dot{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--accent2),var(--accent));box-shadow:0 0 18px var(--accent)}
+  .logo small{color:var(--muted);font-weight:500;margin-left:4px}
+  .bar .spacer{flex:1}
+  .scene-name{color:var(--muted);font-size:13px;font-variant:small-caps;letter-spacing:1px}
+  .hint{color:var(--faint);font-size:12px}
+
+  main{flex:1;position:relative;overflow:hidden}
+  .scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    padding:28px 40px 90px;opacity:0;transform:translateY(14px) scale(.995);
+    transition:opacity .5s ease,transform .5s ease;pointer-events:none}
+  .scene.active{opacity:1;transform:none;pointer-events:auto}
+  .wrap{width:min(1120px,100%);height:100%;display:flex;flex-direction:column;justify-content:center}
+
+  h1{font-size:clamp(28px,4vw,46px);line-height:1.05;margin:0 0 10px;font-weight:760;letter-spacing:-.5px}
+  h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-size:clamp(20px,2.6vw,30px);margin:0 0 6px;font-weight:720;letter-spacing:-.3px}
+  .kicker{color:var(--accent2);font-weight:680;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+  p.lead{font-size:clamp(15px,1.5vw,18px);color:var(--muted);max-width:62ch;line-height:1.55;margin:6px 0}
+  .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:34px;align-items:center}
+  @media(max-width:880px){.cols{grid-template-columns:1fr;gap:18px}}
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--border);
+    border-radius:16px;padding:18px 18px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .codecard{font-family:var(--mono);font-size:13px;line-height:1.55;color:#cdd6e6;
+    background:#0d1119;border:1px solid var(--border);border-radius:14px;padding:16px 18px;overflow:auto}
+  .codecard .c{color:var(--faint)}
+  .codecard .k{color:var(--accent)}
+  .codecard .s{color:var(--accent2)}
+  .codecard .w{color:var(--warn)}
+  .codecard .b{color:var(--bad)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{font-size:12px;border:1px solid var(--border);background:#121826;color:var(--muted);
+    padding:6px 10px;border-radius:999px;display:inline-flex;gap:6px;align-items:center}
+  .chip b{color:var(--ink);font-weight:620}
+  .chip .pip{width:8px;height:8px;border-radius:50%}
+
+  /* graph svg */
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .nodeLabel{font-family:var(--mono);font-size:11px;fill:var(--ink)}
+  .edge{stroke:var(--border);stroke-width:1.6}
+  .edge.live{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 6px rgba(110,168,254,.6))}
+  .nb{fill:var(--panel2);stroke:var(--border);stroke-width:1.4}
+  .nb.folder{stroke:var(--accent)}
+  .nb.commit{stroke:#8aa0c8}
+  .nb.pr{stroke:#a0b4ff}
+  .nb.ticket{stroke:var(--warn)}
+  .nb.file{stroke:var(--faint)}
+  .pulse{animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+
+  .verdict{font-family:var(--mono);font-size:11px;font-weight:700}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}
+  .legend span{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* lesson card */
+  .lesson{border:1px solid var(--border);border-radius:14px;background:#0e1320;overflow:hidden}
+  .lesson .top{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);background:#121826}
+  .lesson .tier{font-family:var(--mono);font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px}
+  .lesson .body{padding:13px 15px;font-size:13.5px;line-height:1.5}
+  .lesson .why{color:var(--ink)}
+  .lesson .meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 14px}
+  .lesson .meta b{color:var(--accent2);font-weight:600}
+
+  .pipeline{display:flex;align-items:stretch;gap:0;margin-top:8px}
+  .stagebox{flex:1;border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:12px;text-align:center;position:relative}
+  .stagebox h4{margin:0 0 4px;font-size:13px}
+  .stagebox p{margin:0;font-size:11.5px;color:var(--muted);line-height:1.4}
+  .arrow{align-self:center;color:var(--faint);padding:0 8px;font-size:18px}
+
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin-top:10px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;color:var(--ink)}
+
+  /* footer nav */
+  footer.nav{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    gap:18px;padding:16px;z-index:40;background:linear-gradient(0deg,rgba(11,14,20,.92),rgba(11,14,20,0))}
+  .dots{display:flex;gap:9px}
+  .dots button{width:9px;height:9px;border-radius:50%;border:0;background:#33405a;cursor:pointer;padding:0;transition:all .25s}
+  .dots button.on{background:var(--accent);box-shadow:0 0 12px var(--accent);transform:scale(1.25)}
+  .navbtn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--ink);
+    font:inherit;font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;display:flex;gap:8px;align-items:center;transition:all .2s}
+  .navbtn:hover{border-color:var(--accent);color:#fff}
+  .navbtn[disabled]{opacity:.35;cursor:default}
+  .count{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;min-width:54px;text-align:center}
+
+  .tag{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .glow{filter:drop-shadow(0 0 10px rgba(126,224,192,.5))}
+  .center{text-align:center}
+  .big-num{font-size:clamp(40px,7vw,86px);font-weight:820;letter-spacing:-2px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+  ul.clean{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:14px;line-height:1.7}
+  ul.clean b{color:var(--ink);font-weight:620}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--border);color:var(--muted)}
+  .fade-seq > *{opacity:0;animation:rise .6s ease forwards}
+  .scene.active .fade-seq > *{opacity:0;animation:rise .6s ease forwards}
+  @keyframes rise{to{opacity:1;transform:none}from{opacity:0;transform:translateY(10px)}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <header class="bar">
+    <div class="logo"><span class="dot"></span> Hivemind <small>· interactive explainer</small></div>
+    <div class="spacer"></div>
+    <div class="scene-name" id="sceneName">The problem</div>
+    <div class="hint">→ / space to advance · ← back</div>
+  </header>
+
+  <main id="main">
+
+    <!-- SCENE 0 -->
+    <section class="scene active" data-name="The problem">
+      <div class="wrap">
+        <div class="cols">
+          <div class="fade-seq">
+            <div class="kicker">The why is invisible at HEAD</div>
+            <h1>Code tells you <span class="grad">what</span>.<br/>It rarely tells you <span class="grad">why</span>.</h1>
+            <p class="lead">Open any file at HEAD and you can read exactly what it does. What you <em>can't</em> see is the rejected alternative, the vendor quirk, the reviewer's objection, the bug that forced the shape — the <b>WHY</b>. It lived in a PR description, a Jira thread, or a reviewer comment, and then it evaporated.</p>
+            <p class="lead"><b style="color:var(--ink)">Hivemind</b> walks your project's history, extracts those non-obvious WHYs as small durable lessons, and serves them back the moment someone needs them.</p>
+            <div class="chips">
+              <span class="chip"><span class="pip" style="background:var(--accent)"></span> walks a code graph</span>
+              <span class="chip"><span class="pip" style="background:var(--learn)"></span> extracts hidden WHY</span>
+              <span class="chip"><span class="pip" style="background:var(--t3)"></span> retrieves on demand</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="tag" style="margin-bottom:8px">features/billing-dashboard/…/PlanUsage.js · at HEAD</div>
+            <div class="codecard"><span class="c">// What you see today:</span>
+limit: (ent?.<span class="s">baseQuantity</span> ?? 0)
+       * (ent?.<span class="s">quantity</span> ?? 1),
+
+<span class="c">// What you CAN'T see:</span>
+<span class="w">// · why multiply at all? (entitlements</span>
+<span class="w">//   store the cap as baseQuantity × quantity)</span>
+<span class="b">// · the first version shipped `quantity` only</span>
+<span class="b">//   and mis-displayed credits — PROJ-4821</span>
+<span class="w">// · the fix proved the invariant the hard way</span></div>
+            <div class="tag" style="margin-top:10px;color:var(--faint)">↑ the comment block is the lesson Hivemind recovers — it isn't in the code.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 1 -->
+    <section class="scene" data-name="The walk">
+      <div class="wrap">
+        <div class="kicker">Phase 1 · enumerate</div>
+        <h2>It starts at a folder and walks outward</h2>
+        <p class="lead">Point Hivemind at an origin — a feature folder like <span class="pill">features/billing-dashboard</span>. A deterministic crawler runs a breadth-first walk over the <b>graph of related artifacts</b>: the commits that touched the folder, the PRs that merged them, the Jira tickets they reference, and the files they changed. No LLM here — just <span class="pill">gh</span>, <span class="pill">git</span>, and <span class="pill">acli</span>.</p>
+        <div class="cols" style="grid-template-columns:1.25fr .75fr;margin-top:6px">
+          <div class="card">
+            <svg id="walkSvg" viewBox="0 0 640 330" aria-label="graph walk">
+              <!-- edges -->
+              <g id="walkEdges"></g>
+              <g id="walkNodes"></g>
+            </svg>
+          </div>
+          <div>
+            <div class="legend" style="margin-top:0">
+              <span><i style="background:var(--accent)"></i> folder (origin)</span>
+              <span><i style="background:#8aa0c8"></i> commit</span>
+              <span><i style="background:#a0b4ff"></i> PR</span>
+              <span><i style="background:var(--warn)"></i> ticket</span>
+              <span><i style="background:var(--faint)"></i> file</span>
+            </div>
+            <dl class="kv">
+              <dt>origin</dt><dd>features/billing-dashboard</dd>
+              <dt>depth cap</dt><dd>2 hops</dd>
+              <dt>visited</dt><dd>3,386 nodes</dd>
+              <dt>worth classifying</dt><dd>~890 (commits, PRs, tickets)</dd>
+              <dt>files</dt><dd>breadcrumbs only — skipped</dd>
+            </dl>
+            <p class="lead" style="font-size:13.5px;margin-top:12px">Each commit fans out to ~13 files, so most nodes are file breadcrumbs. The interesting signal lives on the commits, PRs and tickets.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 2 -->
+    <section class="scene" data-name="Classify">
+      <div class="wrap">
+        <div class="kicker">Phase 2 · classify</div>
+        <h2>A fast model votes on every node</h2>
+        <p class="lead">Each node is handed to a cheap <b>Haiku</b> classifier in batches. One question dominates: <em>“could an engineer fluent at HEAD re-derive the WHY without history?”</em> If yes → <b style="color:var(--skip)">skip</b>. If a hidden WHY is present → <b style="color:var(--learn)">learn</b>. If it's a bug-fix or revert → <b style="color:var(--back)">backtrack</b> (the fix proves a past decision was wrong).</p>
+        <div class="cols" style="grid-template-columns:1.1fr .9fr">
+          <div class="card">
+            <div id="classRows"></div>
+          </div>
+          <div>
+            <div class="legend" style="margin-top:0">
+              <span><i style="background:var(--learn)"></i> learn → write a lesson</span>
+              <span><i style="background:var(--back)"></i> backtrack → find the bug's origin</span>
+              <span><i style="background:var(--skip)"></i> skip → re-derivable, drop it</span>
+            </div>
+            <p class="lead" style="font-size:13.5px;margin-top:14px">Under-emission is the safe failure mode — Hivemind is a lesson book for experts, not a changelog. On a real <span class="pill">billing-dashboard</span> run: <b style="color:var(--learn)">208 learn</b>, <b style="color:var(--back)">211 backtrack</b>, the rest skipped.</p>
+            <p class="lead" style="font-size:13.5px">Obvious-skip nodes (empty-description tickets, pure file breadcrumbs) are filtered in Python first, so they never cost a token.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 3 -->
+    <section class="scene" data-name="Learn & backtrack">
+      <div class="wrap">
+        <div class="kicker">Phase 3 · extract</div>
+        <h2>Lessons get written — sized to the signal</h2>
+        <p class="lead">A <b>learner</b> (Sonnet, or Opus for the hard ones) turns each <span style="color:var(--learn)">learn</span> verdict into <b>one tiered lesson</b>. For each <span style="color:var(--back)">backtrack</span>, a <b>backtracker</b> first walks from the fix back to the <em>introducing</em> commit, then hands the learner a <b>counterfactual</b>: “at introduction, what should have been done to prevent this bug?”</p>
+        <div class="cols" style="grid-template-columns:1fr 1fr;align-items:start">
+          <div class="fade-seq">
+            <div class="lesson" style="margin-bottom:14px">
+              <div class="top"><span class="tier" style="background:rgba(110,168,254,.16);color:var(--t1)">T1</span><b style="font-size:13px">atomic axiom</b><span class="tag" style="margin-left:auto">~300 B</span></div>
+              <div class="body"><div class="why">Trial duration in billing-dashboard uses <b>inclusive</b> calendar-day math at UTC midnight — off-by-one if you use local time.</div>
+                <div class="meta"><span>kind <b>direct</b></span><span>source <b>commit:a1b2c3d</b></span><span>1 evidence URL</span></div></div>
+            </div>
+            <div class="lesson">
+              <div class="top"><span class="tier" style="background:rgba(126,224,192,.16);color:var(--t2)">T2</span><b style="font-size:13px">design decision · with receipts</b><span class="tag" style="margin-left:auto">~1 KB</span></div>
+              <div class="body"><div class="why">feature tiles are gated by the dedicated LD flag <b>billing-dashboard-feature-flag</b>, not the global AI flag — they ship dark until the flag flips.</div>
+                <div class="meta"><span>kind <b>direct</b></span><span>seed_query ✓</span><span>scope <b>FeatureTiles/</b></span></div></div>
+            </div>
+          </div>
+          <div class="fade-seq">
+            <div class="lesson" style="border-color:rgba(255,180,84,.5)">
+              <div class="top" style="background:rgba(255,180,84,.10)"><span class="tier" style="background:rgba(255,180,84,.18);color:var(--back)">T3</span><b style="font-size:13px">counterfactual · bug-proven</b><span class="tag" style="margin-left:auto">backtracker</span></div>
+              <div class="body">
+                <div class="why">At introduction of the plan-usage tile (<b>PR #1842</b>), the limit used <span class="pill">quantity</span> alone. The entitlement schema stores the cap as <b>baseQuantity × quantity</b> — verifying the schema then would have prevented the wrong-limit display fixed in <b>PROJ-4821 / PR #1903</b>.</div>
+                <div class="meta">
+                  <span>introduced_at <b>e7f8a90</b> · PR&nbsp;1842</span>
+                  <span>bug_surfaced_at <b>c9d0e1f</b> · PR&nbsp;1903</span>
+                </div>
+              </div>
+            </div>
+            <p class="lead" style="font-size:13px;margin-top:14px">Counterfactuals always emit — a real bug landed, so the preventative rule is proven, not speculative. They're the highest-value lessons in the corpus.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 4 -->
+    <section class="scene" data-name="Consolidate & store">
+      <div class="wrap">
+        <div class="kicker">Phase 4 · consolidate &amp; publish</div>
+        <h2>Dedup, then make it searchable</h2>
+        <p class="lead">Many learners fire in parallel, so a run can produce near-duplicates. A <b>consolidator</b> clusters lessons by shared evidence (same source, lens, scope path, or PR) and merges or drops the redundant ones. Survivors are POSTed to the storage API → written to <b>S3</b> → embedded into a <b>Bedrock Knowledge Base</b> backed by <b>Aurora pgvector</b>.</p>
+        <div class="pipeline">
+          <div class="stagebox"><h4>Consolidate</h4><p>cluster by shared evidence · merge / pick / keep-all</p></div>
+          <div class="arrow">→</div>
+          <div class="stagebox"><h4>Publish</h4><p>POST /v1/lessons · stable content-addressed id</p></div>
+          <div class="arrow">→</div>
+          <div class="stagebox"><h4>S3</h4><p>lessons/&lt;id&gt;.json · durable store</p></div>
+          <div class="arrow">→</div>
+          <div class="stagebox"><h4>Bedrock KB</h4><p>chunk + embed → Aurora pgvector</p></div>
+        </div>
+        <div class="cols" style="grid-template-columns:1fr 1fr;margin-top:22px;align-items:start">
+          <div class="card">
+            <div class="tag" style="margin-bottom:8px">why a <b style="color:var(--accent2)">stable id</b> matters</div>
+            <div class="codecard"><span class="c"># id = hash of identity, not content</span>
+id = <span class="k">hash</span>(source · lens · facet · bug_sha)
+
+<span class="c"># re-run next week → same id → S3 upsert</span>
+<span class="c"># → KB re-embeds in place → no dupes</span>
+<span class="s">01F3KQ…</span>  <span class="c">(was: a fresh ULID every run)</span></div>
+          </div>
+          <div>
+            <ul class="clean">
+              <li><b>Identity, not content.</b> A lesson can gain evidence and grow T1→T2 across runs while keeping the same id.</li>
+              <li><b>Idempotent.</b> Re-running on the same folder upserts instead of piling on near-duplicates.</li>
+              <li><b>Auditable.</b> Every run also uploads a full event log — what was visited, classified, learned, and refused.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 5 -->
+    <section class="scene" data-name="Retrieve">
+      <div class="wrap">
+        <div class="kicker">The payoff · retrieve</div>
+        <h2>The WHY shows up exactly when it's needed</h2>
+        <p class="lead">Months later a different engineer touches the same area. Before they write code, they (or their agent) ask the hivemind. A Haiku <b>retriever</b> extracts keywords, does a semantic search over the KB, self-checks, and returns up to 5 lessons — the calling agent only ever sees the compact result, not the search work.</p>
+        <div class="cols" style="grid-template-columns:.9fr 1.1fr;align-items:center">
+          <div class="card">
+            <div class="tag" style="margin-bottom:8px">a developer / agent asks</div>
+            <div class="codecard"><span class="k">hivemind:query</span>(
+  question=<span class="s">"how is the plan usage
+    limit computed for a plan?"</span>,
+  working_in=<span class="s">"billing-dashboard/
+    PlanUsage.js"</span>,
+)</div>
+            <div class="tag" style="margin:12px 0 8px;color:var(--accent2)">↓ semantic match in the KB</div>
+          </div>
+          <div class="lesson glow" style="border-color:rgba(255,180,84,.5)">
+            <div class="top" style="background:rgba(255,180,84,.10)"><span class="tier" style="background:rgba(255,180,84,.18);color:var(--back)">T3</span><b style="font-size:13px">counterfactual · score 0.91</b></div>
+            <div class="body">
+              <div class="why">The plan-usage limit must be <b>baseQuantity × quantity</b>, not <span class="pill">quantity</span> alone. Shipping <span class="pill">quantity</span>-only mis-displayed credits on accounts where baseQuantity ≠ 1 — the bug fixed in <b>PROJ-4821</b>. Verify the entitlement schema before changing this calc.</div>
+              <div class="meta"><span>source <b>commit:e7f8a90</b></span><span>PR&nbsp;1903</span><span>tier <b>T3</b></span></div>
+            </div>
+          </div>
+        </div>
+        <p class="lead center" style="margin:22px auto 0;max-width:70ch">The engineer reads the lesson <b>before</b> re-introducing the same bug. That's the whole point: <span class="grad" style="font-weight:700">history that pays attention back.</span></p>
+      </div>
+    </section>
+
+    <!-- SCENE 6 -->
+    <section class="scene" data-name="The loop">
+      <div class="wrap center">
+        <div class="kicker center">the full loop</div>
+        <h1 style="margin-bottom:18px">Walk → classify → learn → store → <span class="grad">retrieve</span></h1>
+        <svg viewBox="0 0 900 150" style="max-width:900px;margin:6px auto 0">
+          <defs>
+            <marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#6ea8fe"/></marker>
+          </defs>
+          <g font-family="var(--sans)" font-size="13" fill="#e6e9f0" text-anchor="middle">
+            <g>
+              <rect x="10" y="50" width="130" height="50" rx="12" fill="#161b27" stroke="#27406a"/>
+              <text x="75" y="72">Walk graph</text><text x="75" y="88" font-size="10" fill="#8b93a7">gh · git · acli</text>
+            </g>
+            <line x1="142" y1="75" x2="186" y2="75" stroke="#6ea8fe" marker-end="url(#ah)"/>
+            <g>
+              <rect x="190" y="50" width="130" height="50" rx="12" fill="#161b27" stroke="#27406a"/>
+              <text x="255" y="72">Classify</text><text x="255" y="88" font-size="10" fill="#8b93a7">Haiku · learn/skip/back</text>
+            </g>
+            <line x1="322" y1="75" x2="366" y2="75" stroke="#6ea8fe" marker-end="url(#ah)"/>
+            <g>
+              <rect x="370" y="50" width="140" height="50" rx="12" fill="#161b27" stroke="#2c6a52"/>
+              <text x="440" y="72">Learn / Backtrack</text><text x="440" y="88" font-size="10" fill="#8b93a7">Sonnet · Opus</text>
+            </g>
+            <line x1="512" y1="75" x2="556" y2="75" stroke="#6ea8fe" marker-end="url(#ah)"/>
+            <g>
+              <rect x="560" y="50" width="140" height="50" rx="12" fill="#161b27" stroke="#27406a"/>
+              <text x="630" y="72">Consolidate+Store</text><text x="630" y="88" font-size="10" fill="#8b93a7">S3 · Bedrock · pgvector</text>
+            </g>
+            <line x1="702" y1="75" x2="746" y2="75" stroke="#6ea8fe" marker-end="url(#ah)"/>
+            <g>
+              <rect x="750" y="50" width="130" height="50" rx="12" fill="#161b27" stroke="#5a3f7a"/>
+              <text x="815" y="72">Retrieve</text><text x="815" y="88" font-size="10" fill="#8b93a7">semantic · top-5</text>
+            </g>
+          </g>
+        </svg>
+        <div class="cols" style="grid-template-columns:repeat(3,1fr);gap:18px;margin-top:30px">
+          <div class="card center"><div class="big-num">WHY</div><p class="lead" style="font-size:13px;margin-top:6px">not WHAT — the filter that keeps the corpus an expert's lesson book.</p></div>
+          <div class="card center"><div class="big-num">3</div><p class="lead" style="font-size:13px;margin-top:6px">tiers — atomic axiom, design decision, irreducible counterfactual.</p></div>
+          <div class="card center"><div class="big-num">1</div><p class="lead" style="font-size:13px;margin-top:6px">command to run it: <span class="pill">/learn-from &lt;folder&gt;</span>, and <span class="pill">hivemind:query</span> to read it back.</p></div>
+        </div>
+        <p class="lead center" style="margin:26px auto 0;max-width:64ch;color:var(--faint)">Built as a Claude Code plugin · deterministic walk + tiered LLM extraction · idempotent, content-addressed storage.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="nav">
+    <button class="navbtn" id="prev">← Back</button>
+    <div class="count" id="count">1 / 7</div>
+    <div class="dots" id="dots"></div>
+    <button class="navbtn" id="next">Next →</button>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var scenes = Array.prototype.slice.call(document.querySelectorAll('.scene'));
+  var dotsWrap = document.getElementById('dots');
+  var sceneName = document.getElementById('sceneName');
+  var count = document.getElementById('count');
+  var i = 0;
+
+  scenes.forEach(function(s,idx){
+    var b = document.createElement('button');
+    b.setAttribute('aria-label','Go to scene '+(idx+1));
+    b.addEventListener('click', function(){ go(idx); });
+    dotsWrap.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+
+  function render(){
+    scenes.forEach(function(s,idx){ s.classList.toggle('active', idx===i); });
+    dots.forEach(function(d,idx){ d.classList.toggle('on', idx===i); });
+    sceneName.textContent = scenes[i].dataset.name;
+    count.textContent = (i+1)+' / '+scenes.length;
+    document.getElementById('prev').disabled = (i===0);
+    document.getElementById('next').disabled = (i===scenes.length-1);
+    if(i===1) buildWalk();
+    if(i===2) buildClassify();
+    // re-trigger fade sequences
+    var active = scenes[i].querySelector('.fade-seq');
+  }
+  function go(n){ i = Math.max(0, Math.min(scenes.length-1, n)); render(); }
+  function next(){ go(i+1); } function prev(){ go(i-1); }
+
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){ e.preventDefault(); next(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); prev(); }
+    else if(e.key==='Home'){ go(0); } else if(e.key==='End'){ go(scenes.length-1); }
+  });
+  // click main to advance (but not on buttons/links)
+  document.getElementById('main').addEventListener('click', function(e){
+    if(e.target.closest('button,a')) return;
+    next();
+  });
+
+  // ---- Scene 1: graph walk (staggered reveal) ----
+  var walkBuilt=false;
+  function buildWalk(){
+    if(walkBuilt) return; walkBuilt=true;
+    var nodes=[
+      {id:'origin',x:70,y:165,t:'folder',label:'billing-dashboard',d:0},
+      {id:'c1',x:250,y:70,t:'commit',label:'commit a1b2c3d',d:1},
+      {id:'c2',x:250,y:165,t:'commit',label:'commit e7f8a90',d:1},
+      {id:'c3',x:250,y:260,t:'commit',label:'commit b4c5d6e',d:1},
+      {id:'pr1',x:455,y:55,t:'pr',label:'PR #1842',d:2},
+      {id:'tk1',x:455,y:120,t:'ticket',label:'PROJ-4821',d:2},
+      {id:'pr2',x:455,y:185,t:'pr',label:'PR #1903',d:2},
+      {id:'f1',x:455,y:248,t:'file',label:'PlanUsage.js',d:2},
+      {id:'f2',x:455,y:300,t:'file',label:'FeatureTiles',d:2}
+    ];
+    var edges=[
+      ['origin','c1'],['origin','c2'],['origin','c3'],
+      ['c2','pr1'],['c2','tk1'],['c2','pr2'],['c2','f1'],['c3','f2']
+    ];
+    var byId={}; nodes.forEach(function(n){byId[n.id]=n;});
+    var eG=document.getElementById('walkEdges');
+    var nG=document.getElementById('walkNodes');
+    eG.innerHTML=''; nG.innerHTML='';
+    edges.forEach(function(e,idx){
+      var a=byId[e[0]], b=byId[e[1]];
+      var l=document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',a.x);l.setAttribute('y1',a.y);
+      l.setAttribute('x2',a.x);l.setAttribute('y2',a.y);
+      l.setAttribute('class','edge');
+      eG.appendChild(l);
+      setTimeout(function(){
+        l.classList.add('live');
+        l.style.transition='all .5s ease';
+        l.setAttribute('x2',b.x);l.setAttribute('y2',b.y);
+        setTimeout(function(){l.classList.remove('live');},700);
+      }, 300 + idx*180);
+    });
+    nodes.forEach(function(n){
+      var g=document.createElementNS('http://www.w3.org/2000/svg','g');
+      g.setAttribute('opacity','0');
+      var shape;
+      if(n.t==='folder'||n.t==='ticket'||n.t==='file'){
+        shape=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        shape.setAttribute('x',n.x-52);shape.setAttribute('y',n.y-15);
+        shape.setAttribute('width',104);shape.setAttribute('height',30);shape.setAttribute('rx',8);
+      } else {
+        shape=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        shape.setAttribute('x',n.x-58);shape.setAttribute('y',n.y-15);
+        shape.setAttribute('width',116);shape.setAttribute('height',30);shape.setAttribute('rx',15);
+      }
+      shape.setAttribute('class','nb '+n.t);
+      var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+      tx.setAttribute('x',n.x);tx.setAttribute('y',n.y+4);
+      tx.setAttribute('text-anchor','middle');tx.setAttribute('class','nodeLabel');
+      tx.textContent=n.label;
+      g.appendChild(shape);g.appendChild(tx);nG.appendChild(g);
+      setTimeout(function(){ g.style.transition='opacity .5s ease'; g.setAttribute('opacity','1'); }, 150 + n.d*420 + Math.random()*120);
+    });
+  }
+
+  // ---- Scene 2: classify rows ----
+  var classBuilt=false;
+  function buildClassify(){
+    if(classBuilt) return; classBuilt=true;
+    var rows=[
+      {n:'commit e7f8a90 · "Implement plan-usage tile"', v:'backtrack', c:'var(--back)', why:'bugfix-shaped chain → find the origin'},
+      {n:'PR #1955 · "Migrate to shared i18n package"', v:'learn', c:'var(--learn)', why:'architecture pivot stated in PR body'},
+      {n:'ticket PROJ-3120 · (no description)', v:'skip', c:'var(--skip)', why:'pre-filtered — nothing to learn'},
+      {n:'commit a1b2c3d · "Align tile date calc"', v:'learn', c:'var(--learn)', why:'UTC inclusive-day constraint, non-obvious'},
+      {n:'PR #1610 · "Storybook build fix"', v:'backtrack', c:'var(--back)', why:'revert-shaped → counterfactual'},
+      {n:'commit d2e3f4a · "Add a code playbook"', v:'learn', c:'var(--learn)', why:'team norm captured in PR body'},
+      {n:'file PlanUsage.js', v:'skip', c:'var(--skip)', why:'scope breadcrumb — not classified'}
+    ];
+    var host=document.getElementById('classRows');
+    host.innerHTML='';
+    rows.forEach(function(r,idx){
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid var(--border);opacity:0;transform:translateX(-8px)';
+      row.innerHTML='<div style="flex:1;font-family:var(--mono);font-size:12px;color:#cdd6e6">'+r.n+
+        '<div style="color:var(--faint);font-size:11px;margin-top:2px">'+r.why+'</div></div>'+
+        '<div class="verdict" style="color:'+r.c+';min-width:78px;text-align:right">'+r.v+'</div>';
+      host.appendChild(row);
+      setTimeout(function(){ row.style.transition='all .45s ease'; row.style.opacity='1'; row.style.transform='none'; }, 200+idx*260);
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
