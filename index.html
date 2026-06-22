@@ -268,6 +268,93 @@ limit: (ent?.<span class="s">baseQuantity</span> ?? 0)
             <p class="lead" style="font-size:13px;margin-top:14px">Counterfactuals always emit — a real bug landed, so the preventative rule is proven, not speculative. They're the highest-value lessons in the corpus.</p>
           </div>
         </div>
+
+        <!-- worked example: the actual file each tier produces -->
+        <h3 style="margin:30px 0 6px">And here's the file each tier actually writes</h3>
+        <p class="lead" style="font-size:13.5px;color:var(--faint);max-width:70ch">Same three lessons as above, but the real artifact — Markdown with YAML frontmatter. Notice the body grows with the reasoning: T1 is one claim plus one URL, T2 adds a <span class="pill">seed_query</span> recipe so an agent can re-derive the conclusion, T3 keeps the irreducible counterfactual narrative.</p>
+
+        <div class="lesson" style="margin-top:16px">
+          <div class="top"><span class="tier" style="background:rgba(110,168,254,.16);color:var(--t1)">T1</span><b style="font-size:13px">atomic axiom</b><span class="tag" style="margin-left:auto">~300 B · no seed_query</span></div>
+          <div class="body"><div class="codecard" style="white-space:pre-wrap"><span class="c">---</span>
+id: 01JQ8K…A1B2
+tier: <span class="k">1</span>
+kind: direct
+category: constraint
+why_claim: <span class="s">"Trial duration in billing-dashboard uses inclusive
+  calendar-day math anchored at UTC midnight — local time is off-by-one."</span>
+tags: [billing-dashboard, trials, timezone]
+provenance:
+  - {source: git, ref: a1b2c3d, url: …/commit/a1b2c3d}
+<span class="c">---</span>
+
+<span class="s">## Evidence</span>
+- &gt; <span class="s">"compute trial days inclusive, anchor to UTC midnight"</span> — a1b2c3d</div></div>
+        </div>
+
+        <div class="lesson" style="margin-top:14px">
+          <div class="top"><span class="tier" style="background:rgba(126,224,192,.16);color:var(--t2)">T2</span><b style="font-size:13px">design decision · with receipts</b><span class="tag" style="margin-left:auto">~1 KB · seed_query ✓</span></div>
+          <div class="body"><div class="codecard" style="white-space:pre-wrap"><span class="c">---</span>
+id: 01JQ8K…C3D4
+tier: <span class="k">2</span>
+kind: direct
+category: design-decision
+why_claim: <span class="s">"Feature tiles are gated by the dedicated LD flag
+  billing-dashboard-feature-flag, not the global AI flag — they ship
+  dark until the flag flips."</span>
+tags: [feature-tiles, launchdarkly, rollout]
+scope: FeatureTiles/
+seed_query:
+  read:
+    - FeatureTiles/useTileGate.ts
+    - PR #1871 description
+  ask: <span class="s">"which flag gates the billing tiles, and why a dedicated one?"</span>
+  expected_conclusion: <span class="s">"a dedicated flag decouples tile rollout
+    from the coarse global AI flag"</span>
+provenance:
+  - {source: github, ref: PR#1871, url: …/pull/1871}
+<span class="c">---</span>
+
+<span class="s">## The why</span>
+The global AI flag toggles many surfaces at once; a dedicated flag lets
+the billing tiles roll out — and roll back — on their own schedule.
+- &gt; <span class="s">"split tiles onto their own flag so we can dark-ship"</span> — PR #1871
+
+<span class="s">## Caveats</span>
+True while the global AI flag stays coarse-grained.</div></div>
+        </div>
+
+        <div class="lesson" style="margin-top:14px;border-color:rgba(255,180,84,.5)">
+          <div class="top" style="background:rgba(255,180,84,.10)"><span class="tier" style="background:rgba(255,180,84,.18);color:var(--back)">T3</span><b style="font-size:13px">counterfactual · bug-proven</b><span class="tag" style="margin-left:auto">~3 KB · backtracker</span></div>
+          <div class="body"><div class="codecard" style="white-space:pre-wrap"><span class="c">---</span>
+id: 01JQ8K…E5F6
+tier: <span class="k">3</span>
+kind: counterfactual
+category: counterfactual
+why_claim: <span class="s">"Entitlement caps are baseQuantity × quantity; the plan-usage
+  tile used quantity alone and displayed the wrong limit."</span>
+tags: [entitlements, plan-usage, scar-tissue]
+backtrack_chain:
+  introduced_at:    {sha: e7f8a90, pr: 1842}
+  bug_surfaced_at:  {sha: c9d0e1f, pr: 1903}
+provenance:
+  - {source: github, ref: PR#1842, url: …/pull/1842}
+  - {source: github, ref: PR#1903, url: …/pull/1903}
+<span class="c">---</span>
+
+<span class="s">## The why</span>
+The entitlement schema stores a cap as baseQuantity × quantity. The
+plan-usage tile read quantity alone, so any plan with baseQuantity &gt; 1
+rendered a limit that was too low.
+
+<span class="s">## Counterfactual</span>
+At introduction (PR #1842) the tile should have multiplied by baseQuantity —
+the field was already on the entitlement object. Verifying the schema then
+would have prevented the wrong-limit display fixed in PROJ-4821 / PR #1903.
+The class of error: trusting one field of a composite cap.
+
+<span class="s">## Caveats</span>
+Collapses only if the schema ever flattens the cap to a single field.</div></div>
+        </div>
       </div>
     </section>
 
