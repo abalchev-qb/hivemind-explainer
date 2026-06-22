@@ -148,10 +148,12 @@
             <div class="kicker">The why is invisible at HEAD</div>
             <h1>Code tells you <span class="grad">what</span>.<br/>It rarely tells you <span class="grad">why</span>.</h1>
             <p class="lead">Open any file at HEAD and you can read exactly what it does. What you <em>can't</em> see is the rejected alternative, the vendor quirk, the reviewer's objection, the bug that forced the shape — the <b>WHY</b>. It lived in a PR description, a Jira thread, or a reviewer comment, and then it evaporated.</p>
-            <p class="lead"><b style="color:var(--ink)">Hivemind</b> walks your project's history, extracts those non-obvious WHYs as small durable lessons, and serves them back the moment someone needs them.</p>
+            <p class="lead"><b style="color:var(--ink)">Hivemind</b> walks your project's history, extracts those non-obvious WHYs as small durable lessons, and serves them back the moment someone — a person <em>or an agent</em> — needs them.</p>
+            <p class="lead" style="color:var(--accent2);font-size:14px"><b>In one line:</b> a shared, searchable memory of <em>why the code is the way it is</em> — grown automatically, read on demand.</p>
             <div class="chips">
               <span class="chip"><span class="pip" style="background:var(--accent)"></span> walks a code graph</span>
               <span class="chip"><span class="pip" style="background:var(--learn)"></span> extracts hidden WHY</span>
+              <span class="chip"><span class="pip" style="background:var(--warn)"></span> forages live corrections</span>
               <span class="chip"><span class="pip" style="background:var(--t3)"></span> retrieves on demand</span>
             </div>
           </div>
@@ -178,7 +180,8 @@ limit: (ent?.<span class="s">baseQuantity</span> ?? 0)
       <div class="wrap">
         <div class="kicker">Phase 1 · enumerate</div>
         <h2>It starts at a folder and walks outward</h2>
-        <p class="lead">Point Hivemind at an origin — a feature folder like <span class="pill">features/billing-dashboard</span>. A deterministic crawler runs a breadth-first walk over the <b>graph of related artifacts</b>: the commits that touched the folder, the PRs that merged them, the Jira tickets they reference, and the files they changed. No LLM here — just <span class="pill">gh</span>, <span class="pill">git</span>, and <span class="pill">acli</span>.</p>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> follow the trail of history around some code — every commit, the PR that merged it, the ticket behind that PR — collecting everything that might carry a WHY.</p>
+        <p class="lead">You run <span class="pill">/learn-from &lt;folder&gt;</span> and point Hivemind at an origin — a feature folder like <span class="pill">features/billing-dashboard</span>. A deterministic crawler runs a breadth-first walk over the <b>graph of related artifacts</b>: the commits that touched the folder, the PRs that merged them, the Jira tickets they reference, and the files they changed. No LLM here — just <span class="pill">gh</span>, <span class="pill">git</span>, and <span class="pill">acli</span>, so this step is cheap and repeatable.</p>
         <div class="cols" style="grid-template-columns:1.25fr .75fr;margin-top:6px">
           <div class="card">
             <svg id="walkSvg" viewBox="0 0 640 330" aria-label="graph walk">
@@ -213,6 +216,7 @@ limit: (ent?.<span class="s">baseQuantity</span> ?? 0)
       <div class="wrap">
         <div class="kicker">Phase 2 · classify</div>
         <h2>A fast model votes on every node</h2>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> a cheap model triages each artifact into one of three buckets — <em>teach it</em>, <em>ignore it</em>, or <em>this is a bug, find what caused it</em>.</p>
         <p class="lead">Each node is handed to a cheap <b>Haiku</b> classifier in batches. One question dominates: <em>“could an engineer fluent at HEAD re-derive the WHY without history?”</em> If yes → <b style="color:var(--skip)">skip</b>. If a hidden WHY is present → <b style="color:var(--learn)">learn</b>. If it's a bug-fix or revert → <b style="color:var(--back)">backtrack</b> (the fix proves a past decision was wrong).</p>
         <div class="cols" style="grid-template-columns:1.1fr .9fr">
           <div class="card">
@@ -272,6 +276,7 @@ limit: (ent?.<span class="s">baseQuantity</span> ?? 0)
       <div class="wrap">
         <div class="kicker">Phase 4 · consolidate &amp; publish</div>
         <h2>Dedup, then make it searchable</h2>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> merge the lessons that say the same thing, then file the survivors in a vector database so they can be found by meaning, not just keywords.</p>
         <p class="lead">Many learners fire in parallel, so a run can produce near-duplicates. A <b>consolidator</b> clusters lessons by shared evidence (same source, lens, scope path, or PR) and merges or drops the redundant ones. Survivors are POSTed to the storage API → written to <b>S3</b> → embedded into a <b>Bedrock Knowledge Base</b> backed by <b>Aurora pgvector</b>.</p>
         <div class="pipeline">
           <div class="stagebox"><h4>Consolidate</h4><p>cluster by shared evidence · merge / pick / keep-all</p></div>
@@ -308,6 +313,7 @@ id = <span class="k">hash</span>(source · lens · facet · bug_sha)
       <div class="wrap">
         <div class="kicker">The payoff · retrieve</div>
         <h2>The WHY shows up exactly when it's needed</h2>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> ask a plain-English question, get back the handful of past lessons that matter — so you read the scar before you re-open the wound.</p>
         <p class="lead">Months later a different engineer touches the same area. Before they write code, they (or their agent) ask the hivemind. A Haiku <b>retriever</b> extracts keywords, does a semantic search over the KB, self-checks, and returns up to 5 lessons — the calling agent only ever sees the compact result, not the search work.</p>
         <div class="cols" style="grid-template-columns:.9fr 1.1fr;align-items:center">
           <div class="card">
@@ -332,11 +338,88 @@ id = <span class="k">hash</span>(source · lens · facet · bug_sha)
       </div>
     </section>
 
-    <!-- SCENE 6 -->
+    <!-- SCENE 6 — THE FORAGER -->
+    <section class="scene" data-name="The forager">
+      <div class="wrap">
+        <div class="kicker" style="color:var(--warn)">The autonomous path · forage</div>
+        <h2>It also learns <span class="grad">while you work</span> — no command needed</h2>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> the best WHY is usually <em>spoken, not committed</em>. When you correct an agent — “no, don't do that, we tried it and it broke X” — Hivemind quietly catches that and turns it into a lesson.</p>
+        <p class="lead">The graph walk is <b>retrospective archaeology</b> — it mines WHYs that survived in commits and PRs. But most reasoning never reaches an artifact; it lives in the moment a human pushes back on an agent. The <b style="color:var(--warn)">forager</b> captures exactly that signal, passively, at near-zero cost.</p>
+        <div class="pipeline" style="margin-top:14px">
+          <div class="stagebox"><h4 style="color:var(--accent)">1 · Pre-filter</h4><p><b>Regex, no LLM, &lt;50ms.</b> Runs on every prompt. Catches correction-shaped language — “no”, “actually”, “wait”, “that's wrong”. Rejects ~90% instantly. <b>Zero user-visible latency.</b></p></div>
+          <div class="arrow">→</div>
+          <div class="stagebox"><h4 style="color:var(--learn)">2 · Pollen</h4><p><b>Haiku draft, ~$0.0001.</b> In the background, a cheap model captures the moment as loose “pollen”: what was corrected, the stated WHY, the agent's prior position. <b>Local only — never shipped yet.</b></p></div>
+          <div class="arrow">→</div>
+          <div class="stagebox"><h4 style="color:var(--back)">3 · Promote</h4><p><b>Opus at session end, ~$0.15.</b> Reads the full transcript + all pollen. <b>Promotes</b> real lessons into the hive, <b>demotes</b> the ones that were just the agent explaining itself, <b>discards</b> noise.</p></div>
+        </div>
+        <div class="cols" style="grid-template-columns:1fr 1fr;margin-top:20px;align-items:start">
+          <div class="card">
+            <div class="tag" style="margin-bottom:8px">why two tiers (cheap draft → smart promote)</div>
+            <ul class="clean">
+              <li><b>Catch fast, judge slow.</b> Haiku grabs the moment before it's gone; Opus decides later with the whole conversation in view.</li>
+              <li><b>Not every correction is a lesson.</b> If you pushed back and then accepted the agent's explanation, that's a <em>“teach the agent to explain better”</em> signal — not a corpus lesson. Only Opus-with-full-context can tell them apart.</li>
+            </ul>
+          </div>
+          <div>
+            <dl class="kv">
+              <dt>user effort</dt><dd><b style="color:var(--accent2)">zero</b> — fully passive, runs in hooks</dd>
+              <dt>in your prompt path</dt><dd>only the &lt;50ms regex — nothing else</dd>
+              <dt>cost @ 50 devs</dt><dd>~$140 / month (vs $1,800 for naïve “Haiku every prompt”)</dd>
+              <dt>kill switch</dt><dd><span class="pill">HIVEMIND_FORAGER=0</span></dd>
+            </dl>
+            <p class="lead" style="font-size:13px;margin-top:12px">Same WHY-not-WHAT bar as the graph walk — the forager under-emits on purpose. The signal it captures is the <b>cleanest of all</b>: a human explicitly said “no, here's why.”</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 7 — AUTONOMOUS AGENT INTEGRATION -->
+    <section class="scene" data-name="Agents plug in">
+      <div class="wrap">
+        <div class="kicker" style="color:var(--t3)">The payoff for agents · the flywheel</div>
+        <h2>An autonomous agent that gets <span class="grad">wiser every run</span></h2>
+        <p class="lead" style="color:var(--accent2);font-size:14px"><b>In plain terms:</b> an autonomous agent normally starts every task with amnesia. Wire in Hivemind and it walks in already knowing the project's scars — and it leaves the project a little smarter than it found it.</p>
+        <p class="lead">Agents like <b>qbee</b> (and our self-verifying agent, in progress) turn a Claude session into a worker that branches, codes, commits, and opens a PR on its own. Hivemind gives that worker <b>memory across runs</b> through three touch-points:</p>
+        <div class="cols" style="grid-template-columns:repeat(3,1fr);gap:16px;margin-top:10px;align-items:stretch">
+          <div class="card">
+            <div class="tier" style="display:inline-block;background:rgba(110,168,254,.16);color:var(--t1);margin-bottom:8px">BEFORE</div>
+            <h4 style="margin:0 0 6px;font-size:15px">Query, then code</h4>
+            <p class="lead" style="font-size:13px;margin:0">Before touching an unfamiliar area, the agent calls <span class="pill">hivemind:query</span>. The hidden constraints, rejected approaches and past bugs land in its context — so it doesn't re-walk into them.</p>
+          </div>
+          <div class="card">
+            <div class="tier" style="display:inline-block;background:rgba(255,180,84,.18);color:var(--back);margin-bottom:8px">DURING</div>
+            <h4 style="margin:0 0 6px;font-size:15px">Self-verify against the hive</h4>
+            <p class="lead" style="font-size:13px;margin:0">A self-verifying agent re-queries before it declares done: <em>“does my change violate anything the hive already knows?”</em> The forager, meanwhile, captures any course-correction along the way.</p>
+          </div>
+          <div class="card">
+            <div class="tier" style="display:inline-block;background:rgba(126,224,192,.16);color:var(--t2);margin-bottom:8px">AFTER</div>
+            <h4 style="margin:0 0 6px;font-size:15px">Learn from what it shipped</h4>
+            <p class="lead" style="font-size:13px;margin:0">Once the agent opens its PR, <span class="pill">/learn-from &lt;that PR&gt;</span> mines durable lessons from the work it just produced — feeding the next agent's <em>before</em> step.</p>
+          </div>
+        </div>
+        <svg viewBox="0 0 760 120" style="max-width:680px;margin:22px auto 0;display:block">
+          <defs><marker id="fw" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c08cff"/></marker></defs>
+          <g font-family="var(--sans)" font-size="12.5" fill="#e6e9f0" text-anchor="middle">
+            <rect x="20" y="44" width="120" height="44" rx="11" fill="#161b27" stroke="#5a3f7a"/><text x="80" y="64">query</text><text x="80" y="79" font-size="10" fill="#8b93a7">pull WHYs in</text>
+            <line x1="142" y1="66" x2="194" y2="66" stroke="#c08cff" marker-end="url(#fw)"/>
+            <rect x="198" y="44" width="120" height="44" rx="11" fill="#161b27" stroke="#27406a"/><text x="258" y="64">work</text><text x="258" y="79" font-size="10" fill="#8b93a7">code · commit · PR</text>
+            <line x1="320" y1="66" x2="372" y2="66" stroke="#c08cff" marker-end="url(#fw)"/>
+            <rect x="376" y="44" width="120" height="44" rx="11" fill="#161b27" stroke="#2c6a52"/><text x="436" y="64">learn-from</text><text x="436" y="79" font-size="10" fill="#8b93a7">mine the PR</text>
+            <line x1="498" y1="66" x2="550" y2="66" stroke="#c08cff" marker-end="url(#fw)"/>
+            <rect x="554" y="44" width="120" height="44" rx="11" fill="#161b27" stroke="#5a3f7a"/><text x="614" y="64">the hive</text><text x="614" y="79" font-size="10" fill="#8b93a7">grows</text>
+            <path d="M614,42 C614,12 80,12 80,42" fill="none" stroke="#c08cff" stroke-dasharray="4 4" marker-end="url(#fw)"/>
+            <text x="347" y="20" font-size="11" fill="#8b93a7">next run starts here — smarter</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SCENE 8 -->
     <section class="scene" data-name="The loop">
       <div class="wrap center">
         <div class="kicker center">the full loop</div>
-        <h1 style="margin-bottom:18px">Walk → classify → learn → store → <span class="grad">retrieve</span></h1>
+        <h1 style="margin-bottom:6px">Walk → classify → learn → store → <span class="grad">retrieve</span></h1>
+        <p class="lead center" style="margin:0 auto 16px;max-width:70ch">Two ways in, one growing memory: the <b style="color:var(--accent)">/learn-from walk</b> mines history on demand; the <b style="color:var(--warn)">forager</b> catches live corrections for free. Both feed the same store — read back by people and agents via <span class="pill">hivemind:query</span>.</p>
         <svg viewBox="0 0 900 150" style="max-width:900px;margin:6px auto 0">
           <defs>
             <marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#6ea8fe"/></marker>
@@ -366,14 +449,21 @@ id = <span class="k">hash</span>(source · lens · facet · bug_sha)
               <rect x="750" y="50" width="130" height="50" rx="12" fill="#161b27" stroke="#5a3f7a"/>
               <text x="815" y="72">Retrieve</text><text x="815" y="88" font-size="10" fill="#8b93a7">semantic · top-5</text>
             </g>
+            <!-- forager feed -->
+            <g>
+              <rect x="370" y="0" width="330" height="34" rx="10" fill="#1a160e" stroke="#5a4626"/>
+              <text x="535" y="21" fill="#ffb454">Forager · live corrections → pollen → promote</text>
+              <line x1="535" y1="36" x2="600" y2="48" stroke="#ffb454" stroke-dasharray="3 3" marker-end="url(#ah)"/>
+            </g>
           </g>
         </svg>
         <div class="cols" style="grid-template-columns:repeat(3,1fr);gap:18px;margin-top:30px">
           <div class="card center"><div class="big-num">WHY</div><p class="lead" style="font-size:13px;margin-top:6px">not WHAT — the filter that keeps the corpus an expert's lesson book.</p></div>
           <div class="card center"><div class="big-num">3</div><p class="lead" style="font-size:13px;margin-top:6px">tiers — atomic axiom, design decision, irreducible counterfactual.</p></div>
-          <div class="card center"><div class="big-num">1</div><p class="lead" style="font-size:13px;margin-top:6px">command to run it: <span class="pill">/learn-from &lt;folder&gt;</span>, and <span class="pill">hivemind:query</span> to read it back.</p></div>
+          <div class="card center"><div class="big-num">2</div><p class="lead" style="font-size:13px;margin-top:6px">ways in — the on-demand <span class="pill">/learn-from</span> walk and the passive <b style="color:var(--warn)">forager</b>; <span class="pill">hivemind:query</span> reads either back.</p></div>
         </div>
-        <p class="lead center" style="margin:26px auto 0;max-width:64ch;color:var(--faint)">Built as a Claude Code plugin · deterministic walk + tiered LLM extraction · idempotent, content-addressed storage.</p>
+        <p class="lead center" style="margin:22px auto 0;max-width:70ch">For an autonomous agent that's a <span class="grad" style="font-weight:700">flywheel</span>: query before it codes, self-verify against the hive, and <span class="pill">/learn-from</span> what it ships — so every run starts smarter than the last.</p>
+        <p class="lead center" style="margin:14px auto 0;max-width:64ch;color:var(--faint)">Built as a Claude Code plugin · deterministic walk + tiered LLM extraction · passive forager via session hooks · idempotent storage.</p>
       </div>
     </section>
 
@@ -381,7 +471,7 @@ id = <span class="k">hash</span>(source · lens · facet · bug_sha)
 
   <footer class="nav">
     <button class="navbtn" id="prev">← Back</button>
-    <div class="count" id="count">1 / 7</div>
+    <div class="count" id="count">1 / 9</div>
     <div class="dots" id="dots"></div>
     <button class="navbtn" id="next">Next →</button>
   </footer>
